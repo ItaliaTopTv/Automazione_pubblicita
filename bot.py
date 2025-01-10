@@ -2,6 +2,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 import asyncio
 import os
+import re
 
 # Configurazioni
 api_id = int(os.getenv("API_ID"))
@@ -47,13 +48,18 @@ async def process_messages_on_startup():
                                 caption_entities=message.caption_entities or [],
                             )
                             print(f"Inviata animazione con didascalia: {filtered_caption}")
-                        # Puoi aggiungere qui altre gestioni per media (video, documenti, audio, ecc.)
 
                 print("Messaggi elaborati, attendo 60 minuti e 10 secondi...")
                 await asyncio.sleep(3610)  # Attendi 60 minuti e 10 secondi prima di rieseguire
 
             except Exception as e:
-                print(f"Errore durante l'elaborazione: {e}")
+                match = re.search(r"\[420 SLOWMODE_WAIT_X\].*?(\d+) seconds", str(e))
+                if match:
+                    wait_time = int(match.group(1))
+                    print(f"Errore di slowmode, attendo {wait_time} secondi...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"Errore durante l'elaborazione: {e}")
 
 # Callback per inviare messaggi in tempo reale
 @app.on_message(filters.chat(source_channel))
@@ -85,9 +91,15 @@ async def forward_message(client: Client, message: Message):
                     caption_entities=message.caption_entities or [],
                 )
                 print(f"Inviata animazione con didascalia in tempo reale: {filtered_caption}")
-            # Puoi aggiungere qui altre gestioni per media (video, documenti, audio, ecc.)
     except Exception as e:
-        print(f"Errore durante l'invio del messaggio: {e}")
+        match = re.search(r"\[420 SLOWMODE_WAIT_X\].*?(\d+) seconds", str(e))
+        if match:
+            wait_time = int(match.group(1))
+            print(f"Errore di slowmode, attendo {wait_time} secondi...")
+            await asyncio.sleep(wait_time)
+            await forward_message(client, message)  # Riprova dopo l'attesa
+        else:
+            print(f"Errore durante l'invio del messaggio: {e}")
 
 print("Bot avviato...")
 app.run(process_messages_on_startup())
