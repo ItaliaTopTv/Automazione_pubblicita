@@ -1,38 +1,42 @@
-from pyrogram import Client, filters
-from pyrogram.types import Message
+from pyrogram import Client
 import asyncio
 import os
 import re
 
-# Configurazioni
-api_id = int(os.getenv("API_ID"))
-api_hash = os.getenv("API_HASH")
-session_name = os.getenv("SESSION_NAME")
+# Configurazioni del bot, lette da variabili di ambiente
+# Questi parametri sono forniti durante il deploy (ad esempio su Render)
+api_id = int(os.getenv("API_ID"))  # ID API dell'app Telegram
+api_hash = os.getenv("API_HASH")  # Hash API associato
+session_name = os.getenv("SESSION_NAME")  # Nome della sessione (es: stringa con sessione salvata)
 source_channel = int(os.getenv("SOURCE_CHANNEL"))  # ID del canale di partenza
-target_channel = int(os.getenv("TARGET_CHANNEL"))  # Nuovo ID del canale di destinazione
-trigger_text = os.getenv("TRIGGER_TEXT")  # Testo per identificare i messaggi
+target_channel = int(os.getenv("TARGET_CHANNEL"))  # ID del canale di destinazione
+trigger_text = os.getenv("TRIGGER_TEXT")  # Testo specifico da cercare nei messaggi
 
-# Avvio del client Pyrogram
+# Creazione del client Pyrogram
 app = Client(session_name, api_id=api_id, api_hash=api_hash)
 
-# Funzione per inviare messaggi filtrati all'avvio
-async def process_messages_on_startup():
+# Funzione principale per l'elaborazione periodica dei messaggi
+async def process_messages_periodically():
+    """Elabora i messaggi del canale sorgente e li inoltra al canale di destinazione ogni 60 minuti e 10 secondi."""
     async with app:
-        while True:
+        while True:  # Loop infinito per l'elaborazione periodica
             try:
-                # Recupera gli ultimi messaggi del canale di partenza
+                # Recupera gli ultimi 100 messaggi dal canale sorgente
                 async for message in app.get_chat_history(source_channel, limit=100):
+                    # Verifica se il messaggio è di testo e contiene il trigger
                     if message.text and trigger_text in message.text:
+                        # Rimuove il trigger dal testo e invia al canale di destinazione
                         filtered_text = message.text.replace(trigger_text, "").strip()
                         await app.send_message(
                             chat_id=target_channel,
                             text=filtered_text,
-                            entities=message.entities or []  # Evita errori se None
+                            entities=message.entities or []  # Mantiene formattazioni come link, grassetto, ecc.
                         )
                         print(f"Inviato messaggio di testo: {filtered_text}")
+                    # Verifica se il messaggio è una foto con una didascalia contenente il trigger
                     elif message.caption and trigger_text in message.caption:
                         filtered_caption = message.caption.replace(trigger_text, "").strip()
-                        if message.photo:
+                        if message.photo:  # Se è una foto
                             await app.send_photo(
                                 chat_id=target_channel,
                                 photo=message.photo.file_id,
@@ -40,7 +44,7 @@ async def process_messages_on_startup():
                                 caption_entities=message.caption_entities or [],
                             )
                             print(f"Inviata foto con didascalia: {filtered_caption}")
-                        elif message.animation:
+                        elif message.animation:  # Se è un'animazione (GIF o video animato)
                             await app.send_animation(
                                 chat_id=target_channel,
                                 animation=message.animation.file_id,
@@ -49,57 +53,20 @@ async def process_messages_on_startup():
                             )
                             print(f"Inviata animazione con didascalia: {filtered_caption}")
 
+                # Attende 60 minuti e 10 secondi prima di ricominciare l'elaborazione
                 print("Messaggi elaborati, attendo 60 minuti e 10 secondi...")
-                await asyncio.sleep(3610)  # Attendi 60 minuti e 10 secondi prima di rieseguire
+                await asyncio.sleep(3610)
 
             except Exception as e:
+                # Gestione dell'errore specifico per la slowmode di Telegram
                 match = re.search(r"\[420 SLOWMODE_WAIT_X\].*?(\d+) seconds", str(e))
                 if match:
-                    wait_time = int(match.group(1))
+                    wait_time = int(match.group(1))  # Estrae il tempo di attesa dai dettagli dell'errore
                     print(f"Errore di slowmode, attendo {wait_time} secondi...")
-                    await asyncio.sleep(wait_time)
+                    await asyncio.sleep(wait_time)  # Attende il tempo richiesto prima di riprovare
                 else:
-                    print(f"Errore durante l'elaborazione: {e}")
+                    print(f"Errore durante l'elaborazione: {e}")  # Log generico per altri tipi di errori
 
-# Callback per inviare messaggi in tempo reale
-@app.on_message(filters.chat(source_channel))
-async def forward_message(client: Client, message: Message):
-    try:
-        if message.text and trigger_text in message.text:
-            filtered_text = message.text.replace(trigger_text, "").strip()
-            await client.send_message(
-                chat_id=target_channel,
-                text=filtered_text,
-                entities=message.entities or []
-            )
-            print(f"Inviato messaggio di testo in tempo reale: {filtered_text}")
-        elif message.caption and trigger_text in message.caption:
-            filtered_caption = message.caption.replace(trigger_text, "").strip()
-            if message.photo:
-                await client.send_photo(
-                    chat_id=target_channel,
-                    photo=message.photo.file_id,
-                    caption=filtered_caption,
-                    caption_entities=message.caption_entities or [],
-                )
-                print(f"Inviata foto con didascalia in tempo reale: {filtered_caption}")
-            elif message.animation:
-                await client.send_animation(
-                    chat_id=target_channel,
-                    animation=message.animation.file_id,
-                    caption=filtered_caption,
-                    caption_entities=message.caption_entities or [],
-                )
-                print(f"Inviata animazione con didascalia in tempo reale: {filtered_caption}")
-    except Exception as e:
-        match = re.search(r"\[420 SLOWMODE_WAIT_X\].*?(\d+) seconds", str(e))
-        if match:
-            wait_time = int(match.group(1))
-            print(f"Errore di slowmode, attendo {wait_time} secondi...")
-            await asyncio.sleep(wait_time)
-            await forward_message(client, message)  # Riprova dopo l'attesa
-        else:
-            print(f"Errore durante l'invio del messaggio: {e}")
-
+# Avvio del bot con l'elaborazione periodica
 print("Bot avviato...")
-app.run(process_messages_on_startup())
+app.run(process_messages_periodically())
