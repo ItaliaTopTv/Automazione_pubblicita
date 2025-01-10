@@ -1,14 +1,15 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import asyncio
+import os
 
 # Configurazioni
-api_id = 23599261
-api_hash = "521a804ba551dd302d15ad01f799429c"
-session_name = "iptvitalia_pubblicita"
-source_channel = -1002349094009  # ID del canale di partenza
-target_channel = -1001430436385  # Nuovo ID del canale di destinazione
-trigger_text = "-pubblicita_completa"  # Testo per identificare i messaggi
+api_id = int(os.getenv("API_ID"))
+api_hash = os.getenv("API_HASH")
+session_name = os.getenv("SESSION_NAME")
+source_channel = int(os.getenv("SOURCE_CHANNEL"))  # ID del canale di partenza
+target_channel = int(os.getenv("TARGET_CHANNEL"))  # Nuovo ID del canale di destinazione
+trigger_text = os.getenv("TRIGGER_TEXT")  # Testo per identificare i messaggi
 
 # Avvio del client Pyrogram
 app = Client(session_name, api_id=api_id, api_hash=api_hash)
@@ -25,8 +26,9 @@ async def process_messages_on_startup():
                         await app.send_message(
                             chat_id=target_channel,
                             text=filtered_text,
-                            entities=message.entities  # Mantiene la formattazione
+                            entities=message.entities or []  # Evita errori se None
                         )
+                        print(f"Inviato messaggio di testo: {filtered_text}")
                     elif message.caption and trigger_text in message.caption:
                         filtered_caption = message.caption.replace(trigger_text, "").strip()
                         if message.photo:
@@ -34,15 +36,17 @@ async def process_messages_on_startup():
                                 chat_id=target_channel,
                                 photo=message.photo.file_id,
                                 caption=filtered_caption,
-                                caption_entities=message.caption_entities,
+                                caption_entities=message.caption_entities or [],
                             )
+                            print(f"Inviata foto con didascalia: {filtered_caption}")
                         elif message.animation:
                             await app.send_animation(
                                 chat_id=target_channel,
                                 animation=message.animation.file_id,
                                 caption=filtered_caption,
-                                caption_entities=message.caption_entities,
+                                caption_entities=message.caption_entities or [],
                             )
+                            print(f"Inviata animazione con didascalia: {filtered_caption}")
                         # Puoi aggiungere qui altre gestioni per media (video, documenti, audio, ecc.)
 
                 print("Messaggi elaborati, attendo 60 minuti e 10 secondi...")
@@ -60,8 +64,9 @@ async def forward_message(client: Client, message: Message):
             await client.send_message(
                 chat_id=target_channel,
                 text=filtered_text,
-                entities=message.entities
+                entities=message.entities or []
             )
+            print(f"Inviato messaggio di testo in tempo reale: {filtered_text}")
         elif message.caption and trigger_text in message.caption:
             filtered_caption = message.caption.replace(trigger_text, "").strip()
             if message.photo:
@@ -69,15 +74,17 @@ async def forward_message(client: Client, message: Message):
                     chat_id=target_channel,
                     photo=message.photo.file_id,
                     caption=filtered_caption,
-                    caption_entities=message.caption_entities,
+                    caption_entities=message.caption_entities or [],
                 )
+                print(f"Inviata foto con didascalia in tempo reale: {filtered_caption}")
             elif message.animation:
                 await client.send_animation(
                     chat_id=target_channel,
                     animation=message.animation.file_id,
                     caption=filtered_caption,
-                    caption_entities=message.caption_entities,
+                    caption_entities=message.caption_entities or [],
                 )
+                print(f"Inviata animazione con didascalia in tempo reale: {filtered_caption}")
             # Puoi aggiungere qui altre gestioni per media (video, documenti, audio, ecc.)
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
